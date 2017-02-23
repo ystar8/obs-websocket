@@ -59,6 +59,8 @@ obs_data_t* Utils::GetSceneItemData(obs_sceneitem_t *item) {
 	obs_data_set_double(data, "volume", obs_source_get_volume(obs_sceneitem_get_source(item)));
 	obs_data_set_double(data, "x", pos.x);
 	obs_data_set_double(data, "y", pos.y);
+	obs_data_set_int(data, "source_cx", (int)item_width);
+	obs_data_set_int(data, "source_cy", (int)item_height);
 	obs_data_set_double(data, "cx", item_width * scale.x);
 	obs_data_set_double(data, "cy", item_height * scale.y);
 	obs_data_set_bool(data, "render", obs_sceneitem_visible(item));
@@ -147,4 +149,18 @@ obs_data_t* Utils::GetSceneData(obs_source *source) {
 	
 	obs_data_array_release(scene_items);
 	return sceneData;
+}
+const char* Utils::OBSVersionString() {
+	uint32_t version = obs_get_version();
+
+	uint8_t major, minor, patch;
+	major = (version >> 24) & 0xFF;
+	minor = (version >> 16) & 0xFF;
+	patch = version & 0xFF;
+
+	size_t string_size = sizeof(char) * 12;
+	char *result = (char*)bmalloc(string_size);
+	sprintf_s(result, string_size, "%d.%d.%d", major, minor, patch);
+
+	return result;
 }

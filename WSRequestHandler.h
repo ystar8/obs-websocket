@@ -57,7 +57,10 @@ private:
 	static void HandleSetCurrentScene(WSRequestHandler *owner);
 	static void HandleGetCurrentScene(WSRequestHandler *owner);
 	static void HandleGetSceneList(WSRequestHandler *owner);
+
 	static void HandleSetSourceRender(WSRequestHandler *owner);
+	static void HandleSetSceneItemPosition(WSRequestHandler *owner);
+	static void HandleSetSceneItemTransform(WSRequestHandler *owner);
 
 	static void HandleGetStreamingStatus(WSRequestHandler *owner);
 	static void HandleStartStopStreaming(WSRequestHandler *owner);
