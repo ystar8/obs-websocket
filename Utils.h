@@ -1,6 +1,6 @@
 /*
 obs-websocket
-Copyright (C) 2016	Stéphane Lepin <stephane.lepin@gmail.com>
+Copyright (C) 2016-2017	Stéphane Lepin <stephane.lepin@gmail.com>
 
 This program is free software; you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
@@ -19,6 +19,7 @@ with this program. If not, see <https://www.gnu.org/licenses/>
 #ifndef UTILS_H
 #define UTILS_H
 
+#include <stdio.h>
 #include <obs-module.h>
 #include <obs-frontend-api.h>
 
@@ -32,6 +33,8 @@ class Utils
 
 		static obs_data_array_t* GetScenes();
 		static obs_data_t* GetSceneData(obs_source *source);
+
+		static const char* Utils::OBSVersionString();
 };
 
 #endif // UTILS_H
