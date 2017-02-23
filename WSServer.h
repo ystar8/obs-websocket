@@ -21,6 +21,7 @@ with this program. If not, see <https://www.gnu.org/licenses/>
 
 #include <QtCore/QObject>
 #include <QtCore/QList>
+#include <QtCore/QMutex>
 #include <QtCore/QByteArray>
 #include "WSRequestHandler.h"
 
@@ -31,19 +32,20 @@ class WSServer : public QObject
 {
 	Q_OBJECT
 
-	public:
-		explicit WSServer(quint16 port, QObject *parent = Q_NULLPTR);
-		virtual ~WSServer();
-		void broadcast(QString message);
+public:
+	explicit WSServer(quint16 port, QObject *parent = Q_NULLPTR);
+	virtual ~WSServer();
+	void broadcast(QString message);
 
 	private Q_SLOTS:
-		void onNewConnection();
-		void socketDisconnected();
+	void onNewConnection();
+	void socketDisconnected();
 
-	private:
-		QWebSocketServer *_wsServer;
-		QList<WSRequestHandler *> _clients;
-		QThread *_serverThread;
+private:
+	QWebSocketServer *_wsServer;
+	QList<WSRequestHandler *> _clients;
+	QMutex _clMutex;
+	QThread *_serverThread;
 };
 
 #endif // WSSERVER_H

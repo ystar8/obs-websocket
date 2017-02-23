@@ -25,6 +25,9 @@ WSEvents::WSEvents(WSServer *server) {
 	QTimer *statusTimer = new QTimer();
 	connect(statusTimer, SIGNAL(timeout()), this, SLOT(StreamStatus()));
 	statusTimer->start(2000); // equal to frontend's constant BITRATE_UPDATE_SECONDS
+
+	_stream_starttime = 0;
+	_rec_starttime = 0;
 }
 
 WSEvents::~WSEvents() {
@@ -42,6 +45,12 @@ void WSEvents::FrontendEventHandler(enum obs_frontend_event event, void *private
 	}
 	else if (event == OBS_FRONTEND_EVENT_SCENE_LIST_CHANGED) {
 		owner->OnSceneListChange();
+	}
+	else if (event == OBS_FRONTEND_EVENT_TRANSITION_CHANGED) {
+		owner->OnTransitionChange();
+	}
+	else if (event == OBS_FRONTEND_EVENT_TRANSITION_LIST_CHANGED) {
+		owner->OnTransitionListChange();
 	}
 	else if (event == OBS_FRONTEND_EVENT_STREAMING_STARTING) {
 		owner->OnStreamStarting();
@@ -74,9 +83,6 @@ void WSEvents::FrontendEventHandler(enum obs_frontend_event event, void *private
 }
 
 void WSEvents::broadcastUpdate(const char *updateType, obs_data_t *additionalFields = NULL) {
-	obs_source_t *source = obs_frontend_get_current_scene();
-	const char *name = obs_source_get_name(source);
-
 	obs_data_t *update = obs_data_create();
 
 	obs_data_set_string(update, "update-type", updateType);
@@ -87,7 +93,6 @@ void WSEvents::broadcastUpdate(const char *updateType, obs_data_t *additionalFie
 	_srv->broadcast(obs_data_get_json(update));
 
 	obs_data_release(update);
-	obs_source_release(source);
 }
 
 void WSEvents::OnSceneChange() {
@@ -126,6 +131,23 @@ void WSEvents::OnSceneListChange() {
 	broadcastUpdate("ScenesChanged");
 }
 
+void WSEvents::OnTransitionChange() {
+	obs_source_t *transition = obs_frontend_get_current_transition();
+	const char *transition_name = obs_source_get_name(transition);
+
+	obs_data_t *data = obs_data_create();
+	obs_data_set_string(data, "transition-name", transition_name);
+
+	broadcastUpdate("SwitchTransition", data);
+
+	obs_data_release(data);
+	obs_source_release(transition);
+}
+
+void WSEvents::OnTransitionListChange() {
+	broadcastUpdate("TransitionListChanged");
+}
+
 void WSEvents::OnStreamStarting() {
 	// Implements an existing update type from bilhamil's OBS Remote
 	obs_data_t *data = obs_data_create();
@@ -138,7 +160,7 @@ void WSEvents::OnStreamStarting() {
 
 void WSEvents::OnStreamStarted() {
 	// New update type specific to OBS Studio
-	_streamStartTime = os_gettime_ns();
+	_stream_starttime = os_gettime_ns();
 	_lastBytesSent = 0;
 	broadcastUpdate("StreamStarted");
 }
@@ -155,7 +177,7 @@ void WSEvents::OnStreamStopping() {
 
 void WSEvents::OnStreamStopped() {
 	// New update type specific to OBS Studio
-	_streamStartTime = 0;
+	_stream_starttime = 0;
 	broadcastUpdate("StreamStopped");
 }
 
@@ -166,6 +188,7 @@ void WSEvents::OnRecordingStarting() {
 
 void WSEvents::OnRecordingStarted() {
 	// New update type specific to OBS Studio
+	_rec_starttime = os_gettime_ns();
 	broadcastUpdate("RecordingStarted");
 }
 
@@ -176,6 +199,7 @@ void WSEvents::OnRecordingStopping() {
 
 void WSEvents::OnRecordingStopped() {
 	// New update type specific to OBS Studio
+	_rec_starttime = 0;
 	broadcastUpdate("RecordingStopped");
 }
 
@@ -215,7 +239,7 @@ void WSEvents::StreamStatus() {
 	_lastBytesSent = bytes_sent;
 	_lastBytesSentTime = bytes_sent_time;
 
-	uint64_t totalStreamTime = (os_gettime_ns() - _streamStartTime) / 1000000000;
+	uint64_t totalStreamTime = (os_gettime_ns() - _stream_starttime) / 1000000000;
 
 	int total_frames = obs_output_get_total_frames(stream_output);
 	int dropped_frames = obs_output_get_frames_dropped(stream_output);

@@ -30,13 +30,16 @@ QT_USE_NAMESPACE
 WSServer::WSServer(quint16 port, QObject *parent) :
 	QObject(parent),
 	_wsServer(Q_NULLPTR),
-	_clients()
+	_clients(),
+	_clMutex(QMutex::NonRecursive)
 {
 	_serverThread = new QThread();
+
 	_wsServer = new QWebSocketServer(
 		QStringLiteral("obs-websocket"),
 		QWebSocketServer::NonSecureMode,
 		this);
+
 	_wsServer->moveToThread(_serverThread);
 	_serverThread->start();
 
@@ -49,13 +52,18 @@ WSServer::WSServer(quint16 port, QObject *parent) :
 WSServer::~WSServer()
 {
 	_wsServer->close();
+
+	_clMutex.lock();
 	qDeleteAll(_clients.begin(), _clients.end());
+	_clMutex.unlock();
 }
 
 void WSServer::broadcast(QString message)
 {
+	_clMutex.lock();
+
 	Q_FOREACH(WSRequestHandler *pClient, _clients) {
-		if (Config::Current()->AuthRequired == true 
+		if (Config::Current()->AuthRequired == true
 			&& pClient->isAuthenticated() == false) {
 			// Skip this client if unauthenticated
 			continue;
@@ -63,6 +71,8 @@ void WSServer::broadcast(QString message)
 
 		pClient->sendTextMessage(message);
 	}
+
+	_clMutex.unlock();
 }
 
 void WSServer::onNewConnection()
@@ -71,18 +81,23 @@ void WSServer::onNewConnection()
 
 	if (pSocket) {
 		WSRequestHandler *pHandler = new WSRequestHandler(pSocket);
-
 		connect(pHandler, &WSRequestHandler::disconnected, this, &WSServer::socketDisconnected);
+
+		_clMutex.lock();
 		_clients << pHandler;
+		_clMutex.unlock();
 	}
 }
 
 void WSServer::socketDisconnected()
 {
-	WSRequestHandler *pClient = qobject_cast<WSRequestHandler *>(sender());
+	WSRequestHandler *pHandler = qobject_cast<WSRequestHandler *>(sender());
 
-	if (pClient) {
-		_clients.removeAll(pClient);
-		pClient->deleteLater();
+	if (pHandler) {
+		_clMutex.lock();
+		_clients.removeAll(pHandler);
+		_clMutex.unlock();
+
+		pHandler->deleteLater();
 	}
 }

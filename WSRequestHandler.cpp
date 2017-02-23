@@ -20,6 +20,7 @@ with this program. If not, see <https://www.gnu.org/licenses/>
 #include "obs-websocket.h"
 #include "Config.h"
 #include "Utils.h"
+#include <QMainWindow>
 
 WSRequestHandler::WSRequestHandler(QWebSocket *client) :
 	_authenticated(false),
@@ -42,19 +43,33 @@ WSRequestHandler::WSRequestHandler(QWebSocket *client) :
 	messageMap["GetStreamingStatus"] = WSRequestHandler::HandleGetStreamingStatus;
 	messageMap["StartStopStreaming"] = WSRequestHandler::HandleStartStopStreaming;
 	messageMap["StartStopRecording"] = WSRequestHandler::HandleStartStopRecording;
-	messageMap["ToggleMute"] = WSRequestHandler::ErrNotImplemented;
-	messageMap["GetVolumes"] = WSRequestHandler::ErrNotImplemented;
-	messageMap["SetVolume"] = WSRequestHandler::ErrNotImplemented;
 
 	messageMap["GetTransitionList"] = WSRequestHandler::HandleGetTransitionList;
 	messageMap["GetCurrentTransition"] = WSRequestHandler::HandleGetCurrentTransition;
 	messageMap["SetCurrentTransition"] = WSRequestHandler::HandleSetCurrentTransition;
 
+	messageMap["SetVolume"] = WSRequestHandler::HandleSetVolume;
+	messageMap["GetVolume"] = WSRequestHandler::HandleGetVolume;
+	messageMap["ToggleMute"] = WSRequestHandler::ToggleMute;
+	messageMap["SetMute"] = WSRequestHandler::SetMute;
+	messageMap["GetVolumes"] = WSRequestHandler::ErrNotImplemented;
+
+	//my self
+	messageMap["SetCurrentProfile"] = WSRequestHandler::HandleSetCurrentProfile;
+	messageMap["GetCurrentProfile"] = WSRequestHandler::HandleGetCurrentProfile;
+	messageMap["UpdateService"] = WSRequestHandler::HandleUpdateService;
+	messageMap["StartStreaming"] = WSRequestHandler::HandleStartStreaming;
+	messageMap["StopStreaming"] = WSRequestHandler::HandleStopStreaming;
+	messageMap["UpdateSourceString"] = WSRequestHandler::HandleUpdateSourceString;
+	messageMap["UpdateSourceInt"] = WSRequestHandler::HandleUpdateSourceInt;
+	messageMap["UpdateSourceBool"] = WSRequestHandler::HandleUpdateSourceBool;
+	messageMap["UpdateSourceDouble"] = WSRequestHandler::HandleUpdateSourceDouble;
+	
 	authNotRequired.insert("GetVersion");
 	authNotRequired.insert("GetAuthRequired");
 	authNotRequired.insert("Authenticate");
 
-	QByteArray client_ip = _client->peerAddress().toString().toLocal8Bit();
+	QByteArray client_ip = _client->peerAddress().toString().toUtf8();
 	blog(LOG_INFO, "[obs-websockets] new client connection from %s:%d", client_ip.constData(), _client->peerPort());
 
 	connect(_client, &QWebSocket::textMessageReceived, this, &WSRequestHandler::processTextMessage);
@@ -62,7 +77,7 @@ WSRequestHandler::WSRequestHandler(QWebSocket *client) :
 }
 
 void WSRequestHandler::processTextMessage(QString textMessage) {
-	QByteArray msgData = textMessage.toLocal8Bit();
+	QByteArray msgData = textMessage.toUtf8();
 	const char *msg = msgData;
 
 	_requestData = obs_data_create_from_json(msg);
@@ -100,7 +115,7 @@ void WSRequestHandler::processTextMessage(QString textMessage) {
 }
 
 void WSRequestHandler::socketDisconnected() {
-	QByteArray client_ip = _client->peerAddress().toString().toLocal8Bit();
+	QByteArray client_ip = _client->peerAddress().toString().toUtf8();
 	blog(LOG_INFO, "[obs-websockets] client %s:%d disconnected", client_ip.constData(), _client->peerPort());
 
 	_authenticated = false;
@@ -345,6 +360,196 @@ void WSRequestHandler::HandleSetCurrentTransition(WSRequestHandler *owner) {
 	else {
 		owner->SendErrorResponse("requested transition does not exist");
 	}
+}
+
+void WSRequestHandler::HandleSetVolume(WSRequestHandler *owner) {
+	const char *item_name = obs_data_get_string(owner->_requestData, "source");
+	float item_volume = obs_data_get_double(owner->_requestData, "volume");
+
+	if (item_name == NULL || item_volume < 0.0 || item_volume > 1.0) {
+		owner->SendErrorResponse("invalid request parameters");
+		return;
+	}
+
+	obs_source_t* item = obs_get_source_by_name(item_name);
+	if (!item) {
+		owner->SendErrorResponse("specified source doesn't exist");
+		return;
+	}
+	obs_source_set_volume(item, item_volume);
+	owner->SendOKResponse();
+
+	obs_source_release(item);
+}
+
+void WSRequestHandler::HandleGetVolume(WSRequestHandler *owner) {
+	const char *item_name = obs_data_get_string(owner->_requestData, "source");
+	if (item_name == NULL) {
+		owner->SendErrorResponse("invalid request parameters");
+		return;
+	}
+
+	obs_source_t* item = obs_get_source_by_name(item_name);
+	
+	obs_data_t* response = obs_data_create();
+	obs_data_set_string(response, "name", item_name);
+	obs_data_set_double(response, "volume", obs_source_get_volume(item));
+
+	owner->SendOKResponse(response);
+
+	obs_data_release(response);
+	obs_source_release(item);
+}
+void WSRequestHandler::ToggleMute(WSRequestHandler *owner) {
+	const char *item_name = obs_data_get_string(owner->_requestData, "source");
+	if (item_name == NULL) {
+		owner->SendErrorResponse("invalid request parameters");
+		return;
+	}
+
+	obs_source_t* item = obs_get_source_by_name(item_name);
+	if (!item) {
+		owner->SendErrorResponse("invalid request parameters");
+		return;
+	}
+
+	obs_source_set_muted(item, !obs_source_muted(item));
+	owner->SendOKResponse();
+
+	obs_source_release(item);
+}
+
+void WSRequestHandler::SetMute(WSRequestHandler *owner) {
+	const char *item_name = obs_data_get_string(owner->_requestData, "source");
+	bool mute = obs_data_get_bool(owner->_requestData, "mute");
+	if (item_name == NULL) {
+		owner->SendErrorResponse("invalid request parameters");
+		return;
+	}
+
+	obs_source_t* item = obs_get_source_by_name(item_name);
+	if (!item) {
+		owner->SendErrorResponse("specified source doesn't exist");
+		return;
+	}
+
+	obs_source_set_muted(item, mute);
+	owner->SendOKResponse();
+
+	obs_source_release(item);
+}
+
+//my self 
+void WSRequestHandler::HandleSetCurrentProfile(WSRequestHandler *owner) {
+	const char *profileName = obs_data_get_string(owner->_requestData, "profile-name");
+	obs_frontend_set_current_profile(profileName);
+	owner->SendOKResponse();
+}
+
+void WSRequestHandler::HandleGetCurrentProfile(WSRequestHandler *owner) {
+	const char *current_profile = obs_frontend_get_current_profile();
+	obs_data_t *data = obs_data_create();
+	obs_data_set_string(data, "profile-name", current_profile);
+	owner->SendOKResponse(data);
+	obs_data_release(data);
+}
+
+void WSRequestHandler::HandleStartStreaming(WSRequestHandler *owner) {
+	if (!obs_frontend_streaming_active()) {
+		obs_frontend_streaming_start();
+	}
+	owner->SendOKResponse();
+}
+
+void WSRequestHandler::HandleStopStreaming(WSRequestHandler *owner) {
+	if (obs_frontend_streaming_active()) {
+		obs_frontend_streaming_stop();
+	}
+	owner->SendOKResponse();
+}
+
+void WSRequestHandler::HandleUpdateService(WSRequestHandler *owner) {
+	const char *key = obs_data_get_string(owner->_requestData, "key");
+	const char *server = obs_data_get_string(owner->_requestData, "server");
+	if (key == NULL || server ==NULL) {
+		owner->SendErrorResponse("invalid request parameters");
+		return;
+	}
+	obs_service_t *service = obs_get_service_by_name("default_service");
+	obs_data_t *settings = obs_service_get_settings(service);
+	obs_data_set_string(settings, "key", key);
+	obs_data_set_string(settings, "server", server);
+	obs_service_update(service, settings);
+	//char full_path[512];
+	//config_t *conf = obs_frontend_get_profile_config();
+	//char *ver_file = obs_module_config_path("version.ini");
+	//obs_data_save_json_safe(settings, full_path,"tmp", "bak");
+	obs_service_release(service);
+	obs_data_release(settings);
+	owner->SendOKResponse();
+}
+
+void WSRequestHandler::HandleUpdateSourceString(WSRequestHandler *owner) {
+	const char *source_name = obs_data_get_string(owner->_requestData, "source-name");
+	const char *source_setting_key = obs_data_get_string(owner->_requestData, "source-setting-key");
+	const char *source_setting_val = obs_data_get_string(owner->_requestData, "source-setting-val");
+	if (source_name == NULL || source_setting_key ==NULL || source_setting_val == NULL) {
+		owner->SendErrorResponse("invalid request parameters");
+		return;
+	}
+	obs_source_t* item = obs_get_source_by_name(source_name);
+	obs_data_t *settings = obs_source_get_settings(item);
+	obs_data_set_string(settings, source_setting_key, source_setting_val);
+	obs_source_update(item, settings);
+	obs_data_release(settings);
+	obs_source_release(item);
+}
+
+void WSRequestHandler::HandleUpdateSourceInt(WSRequestHandler *owner) {
+	const char *source_name = obs_data_get_string(owner->_requestData, "source-name");
+	const char *source_setting_key = obs_data_get_string(owner->_requestData, "source-setting-key");
+	int source_setting_val = obs_data_get_int(owner->_requestData, "source-setting-val");
+	if (source_name == NULL || source_setting_key == NULL || source_setting_val == NULL) {
+		owner->SendErrorResponse("invalid request parameters");
+		return;
+	}
+	obs_source_t* item = obs_get_source_by_name(source_name);
+	obs_data_t *settings = obs_source_get_settings(item);
+	obs_data_set_int(settings, source_setting_key, source_setting_val);
+	obs_source_update(item, settings);
+	obs_data_release(settings);
+	obs_source_release(item);
+}
+
+void WSRequestHandler::HandleUpdateSourceBool(WSRequestHandler *owner) {
+	const char *source_name = obs_data_get_string(owner->_requestData, "source-name");
+	const char *source_setting_key = obs_data_get_string(owner->_requestData, "source-setting-key");
+	bool source_setting_val = obs_data_get_bool(owner->_requestData, "source-setting-val");
+	if (source_name == NULL || source_setting_key == NULL) {
+		owner->SendErrorResponse("invalid request parameters");
+		return;
+	}
+	obs_source_t* item = obs_get_source_by_name(source_name);
+	obs_data_t *settings = obs_source_get_settings(item);
+	obs_data_set_bool(settings, source_setting_key, source_setting_val);
+	obs_source_update(item, settings);
+	obs_data_release(settings);
+	obs_source_release(item);
+}
+void WSRequestHandler::HandleUpdateSourceDouble(WSRequestHandler *owner) {
+	const char *source_name = obs_data_get_string(owner->_requestData, "source-name");
+	const char *source_setting_key = obs_data_get_string(owner->_requestData, "source-setting-key");
+	double source_setting_val = obs_data_get_double(owner->_requestData, "source-setting-val");
+	if (source_name == NULL || source_setting_key == NULL || source_setting_val == NULL) {
+		owner->SendErrorResponse("invalid request parameters");
+		return;
+	}
+	obs_source_t* item = obs_get_source_by_name(source_name);
+	obs_data_t *settings = obs_source_get_settings(item);
+	obs_data_set_double(settings, source_setting_key, source_setting_val);
+	obs_source_update(item, settings);
+	obs_data_release(settings);
+	obs_source_release(item);
 }
 
 void WSRequestHandler::ErrNotImplemented(WSRequestHandler *owner) {
